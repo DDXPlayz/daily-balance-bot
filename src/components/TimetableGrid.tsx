@@ -154,6 +154,36 @@ export default function TimetableGrid({
     return currentTime >= slotTime && currentTime < slotEnd;
   };
 
+  // Auto-scroll to keep current slot at top
+  const currentSlotKey = React.useMemo(() => {
+    if (!isToday) return null;
+    for (const { hour, minute } of timeSlots) {
+      const slotTime = new Date(selectedDate);
+      slotTime.setHours(hour, minute, 0, 0);
+      const slotEnd = new Date(slotTime.getTime() + 30 * 60000);
+      if (currentTime >= slotTime && currentTime < slotEnd) {
+        return `${hour}-${minute}`;
+      }
+    }
+    return null;
+  }, [currentTime, isToday, selectedDate]);
+
+  const prevSlotKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isToday || !currentSlotKey) return;
+    if (prevSlotKeyRef.current === currentSlotKey) return;
+    prevSlotKeyRef.current = currentSlotKey;
+
+    // Scroll the grid so the current slot is at the top
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`slot-${currentSlotKey}`);
+      if (el && gridRef.current) {
+        gridRef.current.scrollTo({ top: el.offsetTop, behavior: 'smooth' });
+      }
+    });
+  }, [currentSlotKey, isToday]);
+
   const handleBookTime = () => {
     if (!selectedSlot) return;
     
@@ -216,11 +246,12 @@ export default function TimetableGrid({
           const isCurrent = isCurrentTimeSlot(hour, minute);
           
           return (
-            <div 
+            <div
+              id={`slot-${hour}-${minute}`}
               key={`${hour}-${minute}`}
               className={cn(
-                "flex border-b border-border/30 transition-colors",
-                "h-10 md:h-12", // Fixed height for better responsiveness
+                "flex border-b border-border/30 transition-colors overflow-hidden",
+                "h-10 md:h-12",
                 minute === 0 && "border-t border-border",
                 isEmpty && !isPast && "hover:bg-accent/5 cursor-pointer",
                 isPast && "bg-muted/30 text-muted-foreground/50",
@@ -246,7 +277,7 @@ export default function TimetableGrid({
               </div>
               
               {/* Content column */}
-              <div className="flex-1 p-1 relative">
+              <div className="flex-1 p-1 relative overflow-hidden">
                 {isEmpty ? (
                   <div className={cn(
                     "h-full flex items-center justify-center text-xs md:text-sm transition-colors",
@@ -256,20 +287,20 @@ export default function TimetableGrid({
                     {isPast ? "Past" : "Click to book time"}
                   </div>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="h-full">
                     {blocks.map(block => (
                       <div
                         key={block.id}
                         draggable={block.type === 'task' && !block.isFixed}
                         onDragStart={(e) => block.taskId && handleDragStart(e, block.taskId)}
                         className={cn(
-                          "relative group rounded-md border p-1 md:p-2 text-xs md:text-sm transition-all duration-200",
+                          "relative group rounded-md border p-1 md:p-2 text-xs md:text-sm transition-all duration-200 h-full overflow-hidden",
                           getBlockColor(block),
                           block.type === 'task' && !block.isFixed && "cursor-move hover:scale-[1.02] hover:shadow-sm",
                           draggedTask === block.taskId && "opacity-50 scale-95",
                           isPast && "opacity-60"
                         )}
-                        style={{ minHeight: '32px' }}
+                        style={{ height: '100%' }}
                       >
                         <div className="flex items-start gap-2">
                           {block.type === 'task' && !block.isFixed && (
