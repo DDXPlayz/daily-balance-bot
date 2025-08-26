@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TimeBlock, UnavailableBlock } from '@/types/task';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,19 @@ export default function TimetableGrid({
   const [draggedTask, setDraggedTask] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<{ hour: number; minute: number } | null>(null);
   const [bookingForm, setBookingForm] = useState({ title: '', description: '', duration: 60 });
+  const [currentTime, setCurrentTime] = useState(new Date());
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // Update current time every minute for real-time display
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const isToday = selectedDate.toDateString() === currentTime.toDateString();
 
   // Generate time slots (30-minute intervals from 6 AM to 11 PM)
   const timeSlots = [];
@@ -112,9 +124,34 @@ export default function TimetableGrid({
 
   const handleSlotClick = (hour: number, minute: number) => {
     const blocks = getBlocksForSlot(hour, minute);
+    
+    // Don't allow booking past time slots if it's today
+    if (isToday) {
+      const slotTime = new Date(selectedDate);
+      slotTime.setHours(hour, minute, 0, 0);
+      if (slotTime <= currentTime) {
+        return; // Don't allow booking past times
+      }
+    }
+    
     if (blocks.length === 0) {
       setSelectedSlot({ hour, minute });
     }
+  };
+
+  const isSlotInPast = (hour: number, minute: number) => {
+    if (!isToday) return false;
+    const slotTime = new Date(selectedDate);
+    slotTime.setHours(hour, minute, 0, 0);
+    return slotTime <= currentTime;
+  };
+
+  const isCurrentTimeSlot = (hour: number, minute: number) => {
+    if (!isToday) return false;
+    const slotTime = new Date(selectedDate);
+    slotTime.setHours(hour, minute, 0, 0);
+    const slotEnd = new Date(slotTime.getTime() + 30 * 60000);
+    return currentTime >= slotTime && currentTime < slotEnd;
   };
 
   const handleBookTime = () => {
@@ -175,28 +212,48 @@ export default function TimetableGrid({
         {timeSlots.map(({ hour, minute }) => {
           const blocks = getBlocksForSlot(hour, minute);
           const isEmpty = blocks.length === 0;
+          const isPast = isSlotInPast(hour, minute);
+          const isCurrent = isCurrentTimeSlot(hour, minute);
           
           return (
             <div 
               key={`${hour}-${minute}`}
               className={cn(
-                "flex border-b border-border/30 hover:bg-accent/5 transition-colors min-h-[40px]",
-                minute === 0 && "border-t border-border"
+                "flex border-b border-border/30 transition-colors",
+                "h-10 md:h-12", // Fixed height for better responsiveness
+                minute === 0 && "border-t border-border",
+                isEmpty && !isPast && "hover:bg-accent/5 cursor-pointer",
+                isPast && "bg-muted/30 text-muted-foreground/50",
+                isCurrent && "bg-primary/10 border-primary/30",
+                isPast && "pointer-events-none"
               )}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, hour, minute)}
-              onClick={() => handleSlotClick(hour, minute)}
+              onDragOver={!isPast ? handleDragOver : undefined}
+              onDrop={!isPast ? (e) => handleDrop(e, hour, minute) : undefined}
+              onClick={!isPast ? () => handleSlotClick(hour, minute) : undefined}
             >
               {/* Time column */}
-              <div className="w-20 p-2 bg-muted/20 border-r border-border text-sm text-muted-foreground font-mono">
-                {minute === 0 && formatTime(hour, minute)}
+              <div className={cn(
+                "w-16 md:w-20 p-2 bg-muted/20 border-r border-border text-xs md:text-sm font-mono flex items-center",
+                isPast && "text-muted-foreground/40",
+                isCurrent && "bg-primary/20 text-primary-foreground font-semibold"
+              )}>
+                {minute === 0 && (
+                  <span className={cn(isCurrent && "animate-pulse")}>
+                    {formatTime(hour, minute)}
+                    {isCurrent && " ●"}
+                  </span>
+                )}
               </div>
               
               {/* Content column */}
               <div className="flex-1 p-1 relative">
                 {isEmpty ? (
-                  <div className="h-full flex items-center justify-center text-muted-foreground/50 text-sm cursor-pointer hover:text-muted-foreground transition-colors">
-                    Click to book time
+                  <div className={cn(
+                    "h-full flex items-center justify-center text-xs md:text-sm transition-colors",
+                    isPast ? "text-muted-foreground/30" : "text-muted-foreground/50 hover:text-muted-foreground",
+                    !isPast && "cursor-pointer"
+                  )}>
+                    {isPast ? "Past" : "Click to book time"}
                   </div>
                 ) : (
                   <div className="space-y-1">
@@ -206,12 +263,13 @@ export default function TimetableGrid({
                         draggable={block.type === 'task' && !block.isFixed}
                         onDragStart={(e) => block.taskId && handleDragStart(e, block.taskId)}
                         className={cn(
-                          "relative group rounded-md border p-2 text-sm transition-all duration-200",
+                          "relative group rounded-md border p-1 md:p-2 text-xs md:text-sm transition-all duration-200",
                           getBlockColor(block),
                           block.type === 'task' && !block.isFixed && "cursor-move hover:scale-[1.02] hover:shadow-sm",
-                          draggedTask === block.taskId && "opacity-50 scale-95"
+                          draggedTask === block.taskId && "opacity-50 scale-95",
+                          isPast && "opacity-60"
                         )}
-                        style={{ height: `${getSlotHeight(block)}px` }}
+                        style={{ minHeight: '32px' }}
                       >
                         <div className="flex items-start gap-2">
                           {block.type === 'task' && !block.isFixed && (

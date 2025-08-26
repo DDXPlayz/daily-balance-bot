@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Task, ScheduleBlock, TimeBlock, UnavailableBlock } from '@/types/task';
 import { AITaskScheduler } from '@/lib/scheduler';
 import { TimetableScheduler } from '@/lib/timetable-scheduler';
@@ -94,6 +94,13 @@ export default function Dashboard() {
     
     setActiveTab('timetable');
   };
+
+  // Auto-regenerate timetable when date changes if we have tasks
+  useEffect(() => {
+    if (tasks.length > 0 && timetable.length > 0) {
+      generateTimetable();
+    }
+  }, [selectedDate]);
 
   const handleRescheduleTask = (taskId: string, newStartTime: Date) => {
     const newTimetable = timetableScheduler.rescheduleTask(taskId, newStartTime, timetable);
