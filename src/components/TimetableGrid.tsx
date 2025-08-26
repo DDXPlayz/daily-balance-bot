@@ -62,11 +62,14 @@ export default function TimetableGrid({
   const getBlocksForSlot = (hour: number, minute: number) => {
     const slotTime = new Date(selectedDate);
     slotTime.setHours(hour, minute, 0, 0);
+    const slotEnd = new Date(slotTime.getTime() + 30 * 60000); // 30-minute slot
     
     return timetable.filter(block => {
       const blockStart = new Date(block.startTime);
       const blockEnd = new Date(block.endTime);
-      return blockStart <= slotTime && blockEnd > slotTime;
+      
+      // Show block if it overlaps with this 30-minute slot
+      return (blockStart < slotEnd && blockEnd > slotTime);
     });
   };
 
