@@ -69,15 +69,41 @@ export default function Dashboard() {
   };
 
   const generateSchedule = () => {
+    // Prefer syncing the timeline directly from the current timetable so both views match exactly
+    const buildFromTimetable = (blocks: TimeBlock[]): ScheduleBlock[] =>
+      blocks
+        .filter(b => b.type !== 'unavailable')
+        .map<ScheduleBlock>(b => ({
+          id: b.id,
+          type: b.type === 'task' ? 'task' : 'break',
+          taskId: b.taskId,
+          task: b.task,
+          startTime: new Date(b.startTime),
+          endTime: new Date(b.endTime),
+          title: b.title,
+          description: b.description,
+        }))
+        .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+    if (timetable.length > 0) {
+      const synced = buildFromTimetable(timetable);
+      setSchedule(synced);
+      toast({
+        title: "Timeline synced",
+        description: `Timeline now mirrors the timetable for ${selectedDate.toLocaleDateString()}.`,
+      });
+      setActiveTab('schedule');
+      return;
+    }
+
+    // Fallback: if no timetable yet, use AI scheduler
     scheduler.setTasks(tasks);
-    const newSchedule = scheduler.generateSchedule();
+    const newSchedule = scheduler.generateSchedule(selectedDate);
     setSchedule(newSchedule);
-    
     toast({
       title: "Schedule generated!",
       description: `Your AI-optimized schedule with ${newSchedule.filter(b => b.type === 'task').length} tasks is ready.`,
     });
-    
     setActiveTab('schedule');
   };
 
@@ -101,6 +127,25 @@ export default function Dashboard() {
       generateTimetable();
     }
   }, [selectedDate]);
+
+  // Keep schedule timeline in sync with the current timetable so times always match
+  useEffect(() => {
+    const mapped = timetable
+      .filter(b => b.type !== 'unavailable')
+      .map<ScheduleBlock>(b => ({
+        id: b.id,
+        type: b.type === 'task' ? 'task' : 'break',
+        taskId: b.taskId,
+        task: b.task,
+        startTime: new Date(b.startTime),
+        endTime: new Date(b.endTime),
+        title: b.title,
+        description: b.description,
+      }))
+      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+    setSchedule(mapped);
+  }, [timetable]);
 
   const handleRescheduleTask = (taskId: string, newStartTime: Date) => {
     const newTimetable = timetableScheduler.rescheduleTask(taskId, newStartTime, timetable);
