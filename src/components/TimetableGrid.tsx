@@ -293,7 +293,7 @@ export default function TimetableGrid({
                         draggable={block.type === 'task' && !block.isFixed}
                         onDragStart={(e) => block.taskId && handleDragStart(e, block.taskId)}
                         className={cn(
-                          "relative group rounded-md border p-1 md:p-2 text-xs transition-all duration-200 overflow-hidden",
+                          "relative group rounded-md border p-1 md:p-2 text-xs transition-all duration-200",
                           getBlockColor(block),
                           block.type === 'task' && !block.isFixed && "cursor-move hover:scale-[1.02] hover:shadow-sm",
                           draggedTask === block.taskId && "opacity-50 scale-95",
@@ -307,10 +307,10 @@ export default function TimetableGrid({
                           
                           {getBlockIcon(block)}
                           
-                          <div className="flex-1 min-w-0 overflow-hidden">
-                            <div className="font-medium truncate text-ellipsis">{block.title}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium leading-tight break-words">{block.title}</div>
                             {block.description && (
-                              <div className="opacity-75 truncate text-ellipsis mt-0.5">
+                              <div className="opacity-75 leading-tight break-words mt-0.5 text-[10px]">
                                 {block.description}
                               </div>
                             )}

@@ -160,10 +160,12 @@ export default function Dashboard() {
     const block = timetable.find(b => b.id === blockId);
     
     if (block?.type === 'unavailable') {
-      // Remove from unavailable blocks
+      // Remove from unavailable blocks and regenerate timetable
       setUnavailableBlocks(prev => prev.filter(b => `unavailable-${b.id}-${selectedDate.toDateString()}` !== blockId));
+      // Regenerate timetable to reflect the change immediately
+      setTimeout(() => generateTimetable(), 0);
     } else {
-      // Remove from timetable
+      // Remove from timetable immediately
       setTimetable(prev => prev.filter(b => b.id !== blockId));
     }
     
