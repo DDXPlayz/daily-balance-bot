@@ -202,7 +202,10 @@ export class ScheduleEngine {
   }
 
   private scheduleTasks(tasks: Task[], workDay: { start: Date; end: Date }) {
-    let currentTime = new Date(workDay.start);
+    // Start from current time if within working hours; otherwise from day start
+    const now = new Date();
+    const startFrom = (now >= workDay.start && now < workDay.end) ? this.roundUpToMinutes(now, 5) : new Date(workDay.start);
+    let currentTime = startFrom;
     let continuousWorkTime = 0;
     
     for (const task of tasks) {
@@ -271,7 +274,7 @@ export class ScheduleEngine {
     
     // Find next available slot after conflicts
     const sortedBlocks = [...this.schedule]
-      .filter(b => b.startTime >= startTime)
+      .filter(b => b.endTime > startTime)
       .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
     
     let nextStart = new Date(startTime);
@@ -306,6 +309,12 @@ export class ScheduleEngine {
 
   private timeSlotsOverlap(start1: Date, end1: Date, start2: Date, end2: Date): boolean {
     return start1 < end2 && start2 < end1;
+  }
+
+  // Round date up to the nearest N-minute mark
+  private roundUpToMinutes(date: Date, minutes: number): Date {
+    const ms = minutes * 60000;
+    return new Date(Math.ceil(date.getTime() / ms) * ms);
   }
 
   private regenerateSchedule() {
