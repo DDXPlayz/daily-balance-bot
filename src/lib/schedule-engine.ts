@@ -139,13 +139,17 @@ export class ScheduleEngine {
         const endTime = new Date(targetDate);
         endTime.setHours(block.endTime.getHours(), block.endTime.getMinutes(), 0, 0);
         
-        // Only add if within working hours
-        if (startTime >= workDay.start && endTime <= workDay.end) {
+        // Add if there's any overlap with working hours
+        if (this.timeSlotsOverlap(startTime, endTime, workDay.start, workDay.end)) {
+          // Trim to working hours if necessary
+          const clampedStart = new Date(Math.max(startTime.getTime(), workDay.start.getTime()));
+          const clampedEnd = new Date(Math.min(endTime.getTime(), workDay.end.getTime()));
+          
           this.schedule.push({
             id: `unavailable-${block.id}-${targetDate.getTime()}`,
             type: 'unavailable',
-            startTime,
-            endTime,
+            startTime: clampedStart,
+            endTime: clampedEnd,
             title: block.title,
             description: block.description,
             isFixed: true
