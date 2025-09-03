@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Task, ScheduleBlock, TimeBlock, UnavailableBlock } from '@/types/task';
-import { AITaskScheduler } from '@/lib/scheduler';
-import { TimetableScheduler } from '@/lib/timetable-scheduler';
+import { ScheduleEngine } from '@/lib/schedule-engine';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -23,8 +22,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const { toast } = useToast();
 
-  const scheduler = useMemo(() => new AITaskScheduler(), []);
-  const timetableScheduler = useMemo(() => new TimetableScheduler(), []);
+  const scheduleEngine = useMemo(() => new ScheduleEngine(), []);
 
   const addTask = (taskData: Omit<Task, 'id' | 'completed' | 'createdAt'>) => {
     const newTask: Task = {
@@ -69,87 +67,87 @@ export default function Dashboard() {
   };
 
   const generateSchedule = () => {
-    // Prefer syncing the timeline directly from the current timetable so both views match exactly
-    const buildFromTimetable = (blocks: TimeBlock[]): ScheduleBlock[] =>
-      blocks
-        .filter(b => b.type !== 'unavailable')
-        .map<ScheduleBlock>(b => ({
-          id: b.id,
-          type: b.type === 'task' ? 'task' : 'break',
-          taskId: b.taskId,
-          task: b.task,
-          startTime: new Date(b.startTime),
-          endTime: new Date(b.endTime),
-          title: b.title,
-          description: b.description,
-        }))
-        .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-
-    if (timetable.length > 0) {
-      const synced = buildFromTimetable(timetable);
-      setSchedule(synced);
-      toast({
-        title: "Timeline synced",
-        description: `Timeline now mirrors the timetable for ${selectedDate.toLocaleDateString()}.`,
-      });
-      setActiveTab('schedule');
-      return;
-    }
-
-    // Fallback: if no timetable yet, use AI scheduler
-    scheduler.setTasks(tasks);
-    const newSchedule = scheduler.generateSchedule(selectedDate);
-    setSchedule(newSchedule);
-    toast({
-      title: "Schedule generated!",
-      description: `Your AI-optimized schedule with ${newSchedule.filter(b => b.type === 'task').length} tasks is ready.`,
-    });
-    setActiveTab('schedule');
-  };
-
-  const generateTimetable = () => {
-    timetableScheduler.setTasks(tasks);
-    timetableScheduler.setUnavailableBlocks(unavailableBlocks);
-    const newTimetable = timetableScheduler.generateTimetable(selectedDate);
-    setTimetable(newTimetable);
+    scheduleEngine.setTasks(tasks);
+    scheduleEngine.setUnavailableBlocks(unavailableBlocks);
+    const newSchedule = scheduleEngine.generateSchedule(selectedDate);
     
-    toast({
-      title: "Timetable generated!",
-      description: `Your hour-by-hour schedule for ${selectedDate.toLocaleDateString()} is ready.`,
-    });
+    // Update both timetable and schedule timeline
+    setTimetable(newSchedule);
     
-    setActiveTab('timetable');
-  };
-
-  // Auto-regenerate timetable when date changes if we have tasks
-  useEffect(() => {
-    if (tasks.length > 0 && timetable.length > 0) {
-      generateTimetable();
-    }
-  }, [selectedDate]);
-
-  // Keep schedule timeline in sync with the current timetable so times always match
-  useEffect(() => {
-    const mapped = timetable
+    const scheduleBlocks: ScheduleBlock[] = newSchedule
       .filter(b => b.type !== 'unavailable')
-      .map<ScheduleBlock>(b => ({
+      .map(b => ({
         id: b.id,
-        type: b.type === 'task' ? 'task' : 'break',
+        type: b.type as 'task' | 'break',
         taskId: b.taskId,
         task: b.task,
         startTime: new Date(b.startTime),
         endTime: new Date(b.endTime),
         title: b.title,
         description: b.description,
-      }))
-      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+      }));
+    
+    setSchedule(scheduleBlocks);
+    
+    toast({
+      title: "Schedule generated!",
+      description: `Smart schedule created with ${scheduleBlocks.filter(b => b.type === 'task').length} tasks and intelligent breaks.`,
+    });
+    
+    setActiveTab('schedule');
+  };
 
-    setSchedule(mapped);
-  }, [timetable]);
+  const generateTimetable = () => {
+    // Use the same engine for consistency
+    generateSchedule();
+    setActiveTab('timetable');
+  };
+
+  // Auto-generate schedule when date or tasks change
+  useEffect(() => {
+    if (tasks.length > 0) {
+      scheduleEngine.setTasks(tasks);
+      scheduleEngine.setUnavailableBlocks(unavailableBlocks);
+      const newSchedule = scheduleEngine.generateSchedule(selectedDate);
+      setTimetable(newSchedule);
+      
+      // Sync timeline
+      const scheduleBlocks: ScheduleBlock[] = newSchedule
+        .filter(b => b.type !== 'unavailable')
+        .map(b => ({
+          id: b.id,
+          type: b.type as 'task' | 'break',
+          taskId: b.taskId,
+          task: b.task,
+          startTime: new Date(b.startTime),
+          endTime: new Date(b.endTime),
+          title: b.title,
+          description: b.description,
+        }));
+      
+      setSchedule(scheduleBlocks);
+    }
+  }, [selectedDate, tasks, unavailableBlocks]);
 
   const handleRescheduleTask = (taskId: string, newStartTime: Date) => {
-    const newTimetable = timetableScheduler.rescheduleTask(taskId, newStartTime, timetable);
+    const newTimetable = scheduleEngine.rescheduleTask(taskId, newStartTime);
     setTimetable(newTimetable);
+    
+    // Sync timeline
+    const scheduleBlocks: ScheduleBlock[] = newTimetable
+      .filter(b => b.type !== 'unavailable')
+      .map(b => ({
+        id: b.id,
+        type: b.type as 'task' | 'break',
+        taskId: b.taskId,
+        task: b.task,
+        startTime: new Date(b.startTime),
+        endTime: new Date(b.endTime),
+        title: b.title,
+        description: b.description,
+      }));
+    
+    setSchedule(scheduleBlocks);
     
     const task = tasks.find(t => t.id === taskId);
     if (task) {
@@ -161,18 +159,29 @@ export default function Dashboard() {
   };
 
   const handleAddUnavailableTime = (startTime: Date, endTime: Date, title: string, description?: string) => {
-    const newBlock = timetableScheduler.addUnavailableTime(startTime, endTime, title, description);
-    setUnavailableBlocks(prev => [...prev, newBlock]);
+    const newTimetable = scheduleEngine.addUnavailableTime(startTime, endTime, title, description);
+    setTimetable(newTimetable);
+    
+    // Sync timeline
+    const scheduleBlocks: ScheduleBlock[] = newTimetable
+      .filter(b => b.type !== 'unavailable')
+      .map(b => ({
+        id: b.id,
+        type: b.type as 'task' | 'break',
+        taskId: b.taskId,
+        task: b.task,
+        startTime: new Date(b.startTime),
+        endTime: new Date(b.endTime),
+        title: b.title,
+        description: b.description,
+      }));
+    
+    setSchedule(scheduleBlocks);
     
     toast({
       title: "Time blocked",
       description: `"${title}" added to unavailable times.`,
     });
-    
-    // Regenerate timetable if there are scheduled tasks
-    if (timetable.length > 0) {
-      generateTimetable();
-    }
   };
 
   const handleAddUnavailableBlock = (block: Omit<UnavailableBlock, 'id'>) => {
@@ -202,18 +211,26 @@ export default function Dashboard() {
   };
 
   const handleDeleteTimeBlock = (blockId: string) => {
+    const newTimetable = scheduleEngine.deleteTimeBlock(blockId);
+    setTimetable(newTimetable);
+    
+    // Sync timeline
+    const scheduleBlocks: ScheduleBlock[] = newTimetable
+      .filter(b => b.type !== 'unavailable')
+      .map(b => ({
+        id: b.id,
+        type: b.type as 'task' | 'break',
+        taskId: b.taskId,
+        task: b.task,
+        startTime: new Date(b.startTime),
+        endTime: new Date(b.endTime),
+        title: b.title,
+        description: b.description,
+      }));
+    
+    setSchedule(scheduleBlocks);
+    
     const block = timetable.find(b => b.id === blockId);
-    
-    if (block?.type === 'unavailable') {
-      // Remove from unavailable blocks and regenerate timetable
-      setUnavailableBlocks(prev => prev.filter(b => `unavailable-${b.id}-${selectedDate.toDateString()}` !== blockId));
-      // Regenerate timetable to reflect the change immediately
-      setTimeout(() => generateTimetable(), 0);
-    } else {
-      // Remove from timetable immediately
-      setTimetable(prev => prev.filter(b => b.id !== blockId));
-    }
-    
     if (block) {
       toast({
         title: "Block removed",
