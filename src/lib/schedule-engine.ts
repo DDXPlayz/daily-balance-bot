@@ -20,6 +20,12 @@ export class ScheduleEngine {
   private tasks: Task[] = [];
   private unavailableBlocks: UnavailableBlock[] = [];
   private schedule: TimeBlock[] = [];
+  
+  // Track ad-hoc unavailable blocks by date (YYYY-MM-DD format)
+  private adHocUnavailableByDate: Map<string, TimeBlock[]> = new Map();
+  
+  // Track suppressed recurring instances by date and block ID
+  private suppressedRecurringInstances: Map<string, Set<string>> = new Map();
 
   setTasks(tasks: Task[]) {
     this.tasks = tasks.filter(t => !t.completed);
@@ -39,9 +45,10 @@ export class ScheduleEngine {
   generateSchedule(date: Date = new Date()): TimeBlock[] {
     this.schedule = [];
     const workDay = this.createWorkDay(date);
+    const dateKey = this.getDateKey(date);
     
-    // Add unavailable blocks first
-    this.addUnavailableBlocks(workDay);
+    // Add all unavailable blocks (recurring + ad-hoc) first
+    this.addUnavailableBlocks(workDay, dateKey);
     
     // Sort tasks by priority and deadline
     const prioritizedTasks = this.prioritizeTasks(date);
@@ -92,8 +99,9 @@ export class ScheduleEngine {
   }
 
   addUnavailableTime(startTime: Date, endTime: Date, title: string, description?: string): TimeBlock[] {
+    const dateKey = this.getDateKey(startTime);
     const unavailableBlock: TimeBlock = {
-      id: `unavailable-${startTime.getTime()}`,
+      id: `ad-hoc-${startTime.getTime()}`,
       type: 'unavailable',
       startTime: new Date(startTime),
       endTime: new Date(endTime),
@@ -102,14 +110,54 @@ export class ScheduleEngine {
       isFixed: true
     };
     
-    this.schedule.push(unavailableBlock);
-    return this.getSchedule();
+    // Store as ad-hoc unavailable block for this date
+    if (!this.adHocUnavailableByDate.has(dateKey)) {
+      this.adHocUnavailableByDate.set(dateKey, []);
+    }
+    this.adHocUnavailableByDate.get(dateKey)!.push(unavailableBlock);
+    
+    // Regenerate entire schedule to handle conflicts
+    return this.generateSchedule(startTime);
   }
 
   deleteTimeBlock(blockId: string): TimeBlock[] {
+    // Find the block to determine the date
+    const block = this.schedule.find(b => b.id === blockId);
+    if (!block) return this.getSchedule();
+    
+    const dateKey = this.getDateKey(block.startTime);
+    
+    // Handle ad-hoc unavailable block deletion
+    if (blockId.startsWith('ad-hoc-')) {
+      const adHocBlocks = this.adHocUnavailableByDate.get(dateKey) || [];
+      const filteredBlocks = adHocBlocks.filter(b => b.id !== blockId);
+      
+      if (filteredBlocks.length === 0) {
+        this.adHocUnavailableByDate.delete(dateKey);
+      } else {
+        this.adHocUnavailableByDate.set(dateKey, filteredBlocks);
+      }
+      
+      // Regenerate entire schedule
+      return this.generateSchedule(block.startTime);
+    }
+    
+    // Handle recurring unavailable block deletion (suppress for this date only)
+    if (blockId.startsWith('unavailable-')) {
+      const recurringBlockId = blockId.split('-')[1]; // Extract original block ID
+      
+      if (!this.suppressedRecurringInstances.has(dateKey)) {
+        this.suppressedRecurringInstances.set(dateKey, new Set());
+      }
+      this.suppressedRecurringInstances.get(dateKey)!.add(recurringBlockId);
+      
+      // Regenerate entire schedule
+      return this.generateSchedule(block.startTime);
+    }
+    
+    // Handle task or break deletion
     this.schedule = this.schedule.filter(b => b.id !== blockId);
     
-    // If we deleted a task, regenerate breaks
     const wasTask = blockId.startsWith('task-');
     if (wasTask) {
       this.regenerateBreaks();
@@ -128,10 +176,15 @@ export class ScheduleEngine {
     return { start, end };
   }
 
-  private addUnavailableBlocks(workDay: { start: Date; end: Date }) {
+  private addUnavailableBlocks(workDay: { start: Date; end: Date }, dateKey: string) {
     const targetDate = workDay.start;
+    const suppressedIds = this.suppressedRecurringInstances.get(dateKey) || new Set();
     
+    // Add recurring unavailable blocks
     for (const block of this.unavailableBlocks) {
+      // Skip if this recurring instance is suppressed for this date
+      if (suppressedIds.has(block.id)) continue;
+      
       if (this.shouldIncludeBlock(block, targetDate)) {
         const startTime = new Date(targetDate);
         startTime.setHours(block.startTime.getHours(), block.startTime.getMinutes(), 0, 0);
@@ -155,6 +208,23 @@ export class ScheduleEngine {
             isFixed: true
           });
         }
+      }
+    }
+    
+    // Add ad-hoc unavailable blocks for this date
+    const adHocBlocks = this.adHocUnavailableByDate.get(dateKey) || [];
+    for (const block of adHocBlocks) {
+      // Only add if within working hours and overlaps
+      if (this.timeSlotsOverlap(block.startTime, block.endTime, workDay.start, workDay.end)) {
+        // Trim to working hours if necessary
+        const clampedStart = new Date(Math.max(block.startTime.getTime(), workDay.start.getTime()));
+        const clampedEnd = new Date(Math.min(block.endTime.getTime(), workDay.end.getTime()));
+        
+        this.schedule.push({
+          ...block,
+          startTime: clampedStart,
+          endTime: clampedEnd
+        });
       }
     }
   }
@@ -322,13 +392,16 @@ export class ScheduleEngine {
   }
 
   private regenerateSchedule() {
-    // Keep unavailable blocks and regenerate everything else
-    const unavailableBlocks = this.schedule.filter(b => b.type === 'unavailable');
-    this.schedule = unavailableBlocks;
-    
+    // Simply regenerate the entire schedule from scratch
     if (this.tasks.length > 0) {
       this.generateSchedule();
+    } else {
+      this.schedule = [];
     }
+  }
+  
+  private getDateKey(date: Date): string {
+    return date.toISOString().split('T')[0];
   }
 
   private regenerateBreaks() {
