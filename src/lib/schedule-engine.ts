@@ -392,12 +392,8 @@ export class ScheduleEngine {
   }
 
   private regenerateSchedule() {
-    // Simply regenerate the entire schedule from scratch
-    if (this.tasks.length > 0) {
-      this.generateSchedule();
-    } else {
-      this.schedule = [];
-    }
+    // Don't auto-regenerate here - let the caller control when to generate
+    // This prevents issues with date mismatches
   }
   
   private getDateKey(date: Date): string {

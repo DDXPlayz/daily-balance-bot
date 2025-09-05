@@ -15,6 +15,8 @@ interface UnavailableTimeManagerProps {
   unavailableBlocks: UnavailableBlock[];
   onAddBlock: (block: Omit<UnavailableBlock, 'id'>) => void;
   onDeleteBlock: (blockId: string) => void;
+  onAddOneTimeBlock?: (startTime: Date, endTime: Date, title: string, description?: string) => void;
+  selectedDate: Date;
 }
 
 const DAYS_OF_WEEK = [
@@ -30,7 +32,9 @@ const DAYS_OF_WEEK = [
 export default function UnavailableTimeManager({ 
   unavailableBlocks, 
   onAddBlock, 
-  onDeleteBlock 
+  onDeleteBlock,
+  onAddOneTimeBlock,
+  selectedDate
 }: UnavailableTimeManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState({
@@ -38,7 +42,7 @@ export default function UnavailableTimeManager({
     description: '',
     startTime: '',
     endTime: '',
-    recurring: false,
+    blockType: 'recurring' as 'recurring' | 'oneTime',
     recurringType: 'weekly' as 'daily' | 'weekly',
     selectedDays: [] as number[]
   });
@@ -46,28 +50,43 @@ export default function UnavailableTimeManager({
   const handleSubmit = () => {
     if (!form.title.trim() || !form.startTime || !form.endTime) return;
 
-    const startTime = new Date(`2000-01-01T${form.startTime}:00`);
-    const endTime = new Date(`2000-01-01T${form.endTime}:00`);
+    if (form.blockType === 'oneTime' && onAddOneTimeBlock) {
+      // Create one-time block for the selected date
+      const startTime = new Date(selectedDate);
+      const [hours, minutes] = form.startTime.split(':').map(Number);
+      startTime.setHours(hours, minutes, 0, 0);
+      
+      const endTime = new Date(selectedDate);
+      const [endHours, endMinutes] = form.endTime.split(':').map(Number);
+      endTime.setHours(endHours, endMinutes, 0, 0);
+      
+      onAddOneTimeBlock(startTime, endTime, form.title, form.description);
+    } else {
+      // Create recurring block
+      const startTime = new Date(`2000-01-01T${form.startTime}:00`);
+      const endTime = new Date(`2000-01-01T${form.endTime}:00`);
 
-    const newBlock: Omit<UnavailableBlock, 'id'> = {
-      startTime,
-      endTime,
-      title: form.title,
-      description: form.description || undefined,
-      recurring: form.recurring ? {
-        type: form.recurringType,
-        days: form.recurringType === 'weekly' ? form.selectedDays : undefined
-      } : undefined
-    };
+      const newBlock: Omit<UnavailableBlock, 'id'> = {
+        startTime,
+        endTime,
+        title: form.title,
+        description: form.description || undefined,
+        recurring: {
+          type: form.recurringType,
+          days: form.recurringType === 'weekly' ? form.selectedDays : undefined
+        }
+      };
 
-    onAddBlock(newBlock);
+      onAddBlock(newBlock);
+    }
+    
     setIsOpen(false);
     setForm({
       title: '',
       description: '',
       startTime: '',
       endTime: '',
-      recurring: false,
+      blockType: 'recurring',
       recurringType: 'weekly',
       selectedDays: []
     });
@@ -170,22 +189,36 @@ export default function UnavailableTimeManager({
               </div>
               
               <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="recurring"
-                    checked={form.recurring}
-                    onCheckedChange={(checked) => 
-                      setForm(prev => ({ ...prev, recurring: !!checked }))
+                <div>
+                  <Label>Block Type</Label>
+                  <Select
+                    value={form.blockType}
+                    onValueChange={(value: 'recurring' | 'oneTime') => 
+                      setForm(prev => ({ ...prev, blockType: value }))
                     }
-                  />
-                  <Label htmlFor="recurring" className="flex items-center gap-1">
-                    <Repeat className="w-4 h-4" />
-                    Recurring
-                  </Label>
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="oneTime">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4" />
+                          One-time ({selectedDate.toLocaleDateString()})
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="recurring">
+                        <div className="flex items-center gap-2">
+                          <Repeat className="w-4 h-4" />
+                          Recurring
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 
-                {form.recurring && (
-                  <div className="space-y-3 pl-6">
+                {form.blockType === 'recurring' && (
+                  <div className="space-y-3 pl-0">
                     <div>
                       <Label>Frequency</Label>
                       <Select

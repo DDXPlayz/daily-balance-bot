@@ -503,6 +503,8 @@ export default function Dashboard() {
               unavailableBlocks={unavailableBlocks}
               onAddBlock={handleAddUnavailableBlock}
               onDeleteBlock={handleDeleteUnavailableBlock}
+              onAddOneTimeBlock={handleAddUnavailableTime}
+              selectedDate={selectedDate}
             />
           </TabsContent>
         </Tabs>
